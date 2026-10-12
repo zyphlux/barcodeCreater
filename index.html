@@ -3,20 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>库位条码</title>
+    <title>条码生成</title>
     <style id="page-size"></style>
   </head>
   <body>
     <header class="topbar no-print">
-      <svg class="mark" viewBox="0 0 20 20" aria-hidden="true">
-        <path fill="currentColor" d="M3 4h1.4v12H3zm2.6 0h.7v12h-.7zm2 0h1.6v12H7.6zm2.6 0H11v12H10.2zm2 0h.8v12h-.8zm2 0h1.6v12H14.2zM17 4h.8v12H17z" />
-      </svg>
-      <h1>库位条码</h1>
+      <a class="brand" href="/">
+        <svg class="mark" viewBox="0 0 20 20" aria-hidden="true">
+          <path fill="currentColor" d="M3 4h1.4v12H3zm2.6 0h.7v12h-.7zm2 0h1.6v12H7.6zm2.6 0H11v12H10.2zm2 0h.8v12h-.8zm2 0h1.6v12H14.2zM17 4h.8v12H17z" />
+        </svg>
+        <h1>条码生成</h1>
+      </a>
+      <nav id="tabs" class="tabs" hidden>
+        <a href="/location" data-route="location">库位条码</a>
+        <a href="/pick" data-route="pick">拣选框</a>
+      </nav>
       <span class="tag">Code 39</span>
     </header>
 
     <div class="page">
-      <form id="form" class="panel no-print">
+      <section id="home" class="home">
+        <a class="entry" href="/location">
+          <h2>库位条码</h2>
+          <p>按四段编号批量生成库位标签</p>
+        </a>
+        <a class="entry" href="/pick">
+          <h2>拣选框</h2>
+          <p>输入容器号，生成 A1 到 B4 共 8 个条码</p>
+        </a>
+      </section>
+
+      <form id="form" class="panel no-print" hidden>
         <div class="seg-head" aria-hidden="true">
           <span></span>
           <span>起始值</span>
@@ -40,26 +57,51 @@
         </div>
       </form>
 
-      <section class="stage">
+      <form id="pick-form" class="panel no-print" hidden>
+        <div class="pick-body">
+          <label class="field pick-field">
+            <span class="field-label">容器号</span>
+            <input id="container" name="container" type="text" autocomplete="off" placeholder="例如 ASSXXXXXXXX" />
+          </label>
+          <button type="submit" class="primary">生成标签</button>
+        </div>
+        <p id="pick-error" class="alert" role="alert" hidden>
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path fill="currentColor" d="M8 1.2a6.8 6.8 0 1 0 0 13.6A6.8 6.8 0 0 0 8 1.2zM7.2 4.6h1.6v4.6H7.2zm0 5.8h1.6V12H7.2z" />
+          </svg>
+          <span id="pick-error-text"></span>
+        </p>
+      </form>
+
+      <section id="stage" class="stage" hidden>
         <div class="stage-bar no-print">
-          <div class="stage-title">
-            <h2>标签预览</h2>
-            <p id="preview-hint" class="hint"></p>
-          </div>
-          <fieldset class="segmented" id="size-switch">
-            <legend>标签尺寸</legend>
-            <span class="segmented-thumb" aria-hidden="true"></span>
-            <label class="choice"><input type="radio" name="size" value="15x10" checked />15×10 cm</label>
-            <label class="choice"><input type="radio" name="size" value="7x4" />7×4 cm</label>
-          </fieldset>
-          <div class="actions">
-            <button type="button" id="print-label" disabled>打印 / 导出 PDF</button>
-            <button type="button" id="print-a4" disabled>A4 拼版打印</button>
-          </div>
+          <details class="export-fold">
+            <summary>打印 / 导出</summary>
+            <div class="actions">
+              <button type="button" id="print-label" disabled>打印 / 导出 PDF</button>
+              <button type="button" id="print-a4" disabled>A4 拼版打印</button>
+            </div>
+          </details>
         </div>
         <div id="preview" class="preview" aria-label="标签预览"></div>
       </section>
     </div>
+    <button type="button" id="pick-mask" class="pick-mask no-print" hidden tabindex="-1" aria-label="聚焦容器号"></button>
+    <dialog id="export-dialog" class="export-dialog no-print">
+      <form method="dialog" id="export-form">
+        <h2>导出尺寸</h2>
+        <p id="export-mode" class="hint"></p>
+        <fieldset class="export-sizes">
+          <legend>标签尺寸</legend>
+          <label class="export-size"><input type="radio" name="export-size" value="15x10" checked />15×10 cm</label>
+          <label class="export-size"><input type="radio" name="export-size" value="7x4" />7×4 cm</label>
+        </fieldset>
+        <div class="export-actions">
+          <button value="cancel">取消</button>
+          <button class="primary" value="ok">导出</button>
+        </div>
+      </form>
+    </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

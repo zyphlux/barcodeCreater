@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "check": "node --experimental-strip-types src/generate.spec.ts"
+    "check": "node --experimental-strip-types src/generate.spec.ts && node --experimental-strip-types src/picking.spec.ts"
   },
   "dependencies": {
     "jsbarcode": "^3.11.6"

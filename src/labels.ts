@@ -1,15 +1,17 @@
 import JsBarcode from "jsbarcode";
 
-export type LabelSize = "15x10" | "7x4";
+export type PrintSize = "15x10" | "7x4";
+export type LabelSize = PrintSize | "fluid";
 
 const SIZE_CLASS: Record<LabelSize, string> = {
+  fluid: "label-fluid",
   "15x10": "label-15x10",
   "7x4": "label-7x4",
 };
 
 export function renderLabels(container: HTMLElement, codes: string[], size: LabelSize): void {
   container.replaceChildren();
-  const tall = size === "15x10";
+  const tall = size !== "7x4";
   const moduleWidth = 2;
 
   for (const code of codes) {

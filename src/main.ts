@@ -5,7 +5,8 @@ import {
   type GrowthMode,
   type SegmentConfig,
 } from "./generate";
-import { renderLabels, type LabelSize } from "./labels";
+import { renderLabels, type PrintSize } from "./labels";
+import { pickingCodes } from "./picking";
 
 const MODES: { value: GrowthMode; label: string }[] = [
   { value: "fixed", label: "固定" },
@@ -21,21 +22,40 @@ const PLACEHOLDERS = [
 ];
 
 const EXAMPLE_CODE = "001.01.1.1";
+const TITLES = {
+  home: "条码生成",
+  location: "库位条码",
+  pick: "拣选框",
+} as const;
 
+type AppRoute = keyof typeof TITLES;
+
+const home = document.querySelector<HTMLElement>("#home")!;
+const tabs = document.querySelector<HTMLElement>("#tabs")!;
 const form = document.querySelector<HTMLFormElement>("#form")!;
+const pickForm = document.querySelector<HTMLFormElement>("#pick-form")!;
+const containerInput = document.querySelector<HTMLInputElement>("#container")!;
 const segmentsRoot = document.querySelector<HTMLElement>("#segments")!;
 const countEl = document.querySelector<HTMLElement>("#count")!;
 const errorEl = document.querySelector<HTMLElement>("#error")!;
 const errorText = document.querySelector<HTMLElement>("#error-text")!;
+const pickErrorEl = document.querySelector<HTMLElement>("#pick-error")!;
+const pickErrorText = document.querySelector<HTMLElement>("#pick-error-text")!;
+const stage = document.querySelector<HTMLElement>("#stage")!;
 const preview = document.querySelector<HTMLElement>("#preview")!;
-const previewHint = document.querySelector<HTMLElement>("#preview-hint")!;
 const printLabelBtn = document.querySelector<HTMLButtonElement>("#print-label")!;
 const printA4Btn = document.querySelector<HTMLButtonElement>("#print-a4")!;
 const pageSize = document.querySelector<HTMLStyleElement>("#page-size")!;
-const sizeSwitch = document.querySelector<HTMLElement>("#size-switch")!;
+const exportDialog = document.querySelector<HTMLDialogElement>("#export-dialog")!;
+const pickMask = document.querySelector<HTMLButtonElement>("#pick-mask")!;
+const exportMode = document.querySelector<HTMLElement>("#export-mode")!;
 
+let currentRoute: AppRoute = "home";
 let currentCodes: string[] = [];
+let locationCodes: string[] = [];
+let pickCodes: string[] = [];
 let opened = false;
+let pendingPrint: "label" | "a4" | null = null;
 
 function field(name: string, label: string, placeholder: string, min: number): HTMLLabelElement {
   const wrapper = document.createElement("label");
@@ -126,8 +146,8 @@ function readSegments(): SegmentConfig[] {
   }));
 }
 
-function selectedSize(): LabelSize {
-  const selected = sizeSwitch.querySelector<HTMLInputElement>('input[name="size"]:checked');
+function exportSize(): PrintSize {
+  const selected = exportDialog.querySelector<HTMLInputElement>('input[name="export-size"]:checked');
   return selected?.value === "7x4" ? "7x4" : "15x10";
 }
 
@@ -139,6 +159,11 @@ function setPrintEnabled(enabled: boolean): void {
 function setError(message: string): void {
   errorText.textContent = message;
   errorEl.hidden = message.length === 0;
+}
+
+function setPickError(message: string): void {
+  pickErrorText.textContent = message;
+  pickErrorEl.hidden = message.length === 0;
 }
 
 function renderCount(count: number | null, tick: boolean): void {
@@ -154,25 +179,16 @@ function renderCount(count: number | null, tick: boolean): void {
   countEl.append(number, " 张");
 }
 
-function placeThumb(animate: boolean): void {
-  const checked = sizeSwitch.querySelector<HTMLInputElement>('input[name="size"]:checked');
-  const choice = checked?.closest("label");
-  const thumb = sizeSwitch.querySelector<HTMLElement>(".segmented-thumb");
-  if (!checked || !choice || !thumb) return;
-  if (!animate) sizeSwitch.classList.remove("is-ready");
-  const box = sizeSwitch.getBoundingClientRect();
-  const item = choice.getBoundingClientRect();
-  thumb.style.width = `${item.width}px`;
-  thumb.style.height = `${item.height}px`;
-  thumb.style.transform = `translate(${item.left - box.left}px, ${item.top - box.top}px)`;
-  if (!animate) requestAnimationFrame(() => sizeSwitch.classList.add("is-ready"));
+function setBarcodeFit(mode: "meet" | "slice"): void {
+  preview.querySelectorAll("svg").forEach((svg) => {
+    svg.setAttribute("preserveAspectRatio", `xMidYMid ${mode}`);
+  });
 }
 
-function setLabelSizeClass(size: LabelSize): void {
-  const on = size === "15x10" ? "label-15x10" : "label-7x4";
-  const off = size === "15x10" ? "label-7x4" : "label-15x10";
+function setLabelSizeClass(size: PrintSize | "fluid"): void {
+  const on = size === "fluid" ? "label-fluid" : size === "15x10" ? "label-15x10" : "label-7x4";
   preview.querySelectorAll<HTMLElement>(".label").forEach((label) => {
-    label.classList.remove(off);
+    label.classList.remove("label-fluid", "label-15x10", "label-7x4");
     label.classList.add(on);
   });
 }
@@ -199,32 +215,55 @@ function refreshCount(): void {
 
 function showExample(): void {
   currentCodes = [];
-  document.body.dataset.size = selectedSize();
+  document.body.dataset.size = "fluid";
   preview.classList.add("is-example");
-  renderLabels(preview, [EXAMPLE_CODE], selectedSize());
-  previewHint.textContent = "屏幕为缩小预览，打印为实际尺寸";
+  preview.classList.remove("preview-pick");
+  renderLabels(preview, [EXAMPLE_CODE], "fluid");
+  setPrintEnabled(false);
+}
+
+function showPickEmpty(): void {
+  currentCodes = [];
+  preview.classList.remove("is-example", "preview-pick");
+  preview.replaceChildren();
   setPrintEnabled(false);
 }
 
 function showLabels(codes: string[]): void {
-  const size = selectedSize();
-  const reuse = sameCodes(codes) && preview.childElementCount === codes.length;
+  const pickLayout = currentRoute === "pick";
+  const reuse =
+    sameCodes(codes) &&
+    preview.childElementCount === codes.length &&
+    preview.classList.contains("preview-pick") === pickLayout;
   currentCodes = codes;
-  document.body.dataset.size = size;
+  document.body.dataset.size = "fluid";
   preview.classList.remove("is-example");
-  if (reuse) setLabelSizeClass(size);
-  else renderLabels(preview, codes, size);
-  previewHint.textContent = "屏幕为缩小预览，打印为实际尺寸";
+  preview.classList.toggle("preview-pick", pickLayout);
+  if (reuse) setLabelSizeClass("fluid");
+  else renderLabels(preview, codes, "fluid");
+  setBarcodeFit(pickLayout ? "slice" : "meet");
   setPrintEnabled(codes.length > 0);
+}
+
+function syncPreview(): void {
+  if (currentRoute === "pick") {
+    if (pickCodes.length > 0) showLabels(pickCodes);
+    else showPickEmpty();
+    return;
+  }
+  if (currentRoute === "location") {
+    if (locationCodes.length > 0) showLabels(locationCodes);
+    else showExample();
+  }
 }
 
 function generate(): void {
   const result = generateCodes(readSegments());
   if (!result.ok) {
+    locationCodes = [];
     currentCodes = [];
-    preview.classList.remove("is-example");
+    preview.classList.remove("is-example", "preview-pick");
     preview.replaceChildren();
-    previewHint.textContent = "";
     renderCount(null, false);
     setError(result.error);
     setPrintEnabled(false);
@@ -233,23 +272,147 @@ function generate(): void {
   setError("");
   renderCount(result.count, opened);
   opened = true;
+  locationCodes = result.codes;
   showLabels(result.codes);
 }
 
+function selectContainerText(): void {
+  const length = containerInput.value.length;
+  if (document.activeElement !== containerInput || length === 0) return;
+  if (containerInput.selectionStart === 0 && containerInput.selectionEnd === length) return;
+  containerInput.setSelectionRange(0, length);
+}
+
+let suppressCaret = false;
+let suppressUntil = 0;
+
+function armContainerSelect(): void {
+  suppressCaret = true;
+  suppressUntil = performance.now() + 300;
+  const tick = (): void => {
+    selectContainerText();
+    if (performance.now() < suppressUntil) requestAnimationFrame(tick);
+    else suppressCaret = false;
+  };
+  tick();
+}
+
+function focusContainer(selectAll: boolean): void {
+  containerInput.focus();
+  if (selectAll) armContainerSelect();
+}
+
+function syncPickMask(): void {
+  const blurred = document.activeElement !== containerInput;
+  pickMask.hidden = !(currentRoute === "pick" && blurred && !exportDialog.open);
+}
+
+function generatePick(): void {
+  const result = pickingCodes(containerInput.value);
+  if (!result.ok) {
+    pickCodes = [];
+    currentCodes = [];
+    preview.classList.remove("is-example", "preview-pick");
+    preview.replaceChildren();
+    setPickError(result.error);
+    setPrintEnabled(false);
+  } else {
+    setPickError("");
+    pickCodes = result.codes;
+    showLabels(result.codes);
+  }
+  focusContainer(true);
+}
+
 function applyPage(mode: "label" | "a4"): void {
-  const size = selectedSize();
+  const size = exportSize();
   document.body.dataset.print = mode;
   document.body.dataset.size = size;
+  setLabelSizeClass(size);
+  setBarcodeFit("meet");
   const page = mode === "a4" ? "A4" : size === "15x10" ? "15cm 10cm" : "7cm 4cm";
   const margin = mode === "a4" ? "6mm" : "0";
   pageSize.textContent = `@page { size: ${page}; margin: ${margin}; }`;
 }
 
+function restoreScreen(): void {
+  document.body.removeAttribute("data-print");
+  document.body.dataset.size = "fluid";
+  if (preview.querySelector(".label")) {
+    setLabelSizeClass("fluid");
+    setBarcodeFit(currentRoute === "pick" ? "slice" : "meet");
+  }
+}
+
+function openExport(mode: "label" | "a4"): void {
+  pendingPrint = mode;
+  exportMode.textContent = mode === "a4" ? "A4 拼版打印" : "打印 / 导出 PDF";
+  pickMask.hidden = true;
+  exportDialog.showModal();
+}
+
+function routeFromPath(pathname: string): { path: string; route: AppRoute } {
+  const path = pathname.replace(/\/+$/, "") || "/";
+  if (path === "/location") return { path, route: "location" };
+  if (path === "/pick") return { path, route: "pick" };
+  return { path: "/", route: "home" };
+}
+
+function renderRoute(): void {
+  const next = routeFromPath(location.pathname);
+  if (next.path !== location.pathname) history.replaceState(null, "", next.path);
+  currentRoute = next.route;
+  document.body.dataset.route = next.route;
+  document.title = TITLES[next.route];
+
+  const atHome = next.route === "home";
+  home.hidden = !atHome;
+  tabs.hidden = atHome;
+  form.hidden = next.route !== "location";
+  pickForm.hidden = next.route !== "pick";
+  stage.hidden = atHome;
+
+  tabs.querySelectorAll<HTMLAnchorElement>("a").forEach((link) => {
+    const active = link.dataset.route === next.route;
+    link.classList.toggle("is-active", active);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+
+  if (!atHome) syncPreview();
+  pickMask.hidden = true;
+  if (next.route === "pick") {
+    requestAnimationFrame(() => {
+      if (currentRoute === "pick") focusContainer(true);
+      syncPickMask();
+    });
+  }
+}
+
+function navigate(pathname: string): void {
+  const next = routeFromPath(pathname);
+  if (next.path === location.pathname) return;
+  history.pushState(null, "", next.path);
+  renderRoute();
+}
+
 buildSegments();
 refreshCount();
-showExample();
-placeThumb(false);
-window.addEventListener("resize", () => placeThumb(false));
+renderRoute();
+window.addEventListener("popstate", renderRoute);
+
+document.addEventListener("click", (event) => {
+  if (event.defaultPrevented || event.button !== 0) return;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const link = (event.target as Element | null)?.closest("a");
+  if (!(link instanceof HTMLAnchorElement)) return;
+  if (link.target && link.target !== "_self") return;
+  if (link.origin !== location.origin) return;
+  const href = link.getAttribute("href");
+  if (!href || !href.startsWith("/")) return;
+  event.preventDefault();
+  navigate(link.pathname);
+});
 
 form.addEventListener("input", () => {
   refreshCount();
@@ -260,21 +423,57 @@ form.addEventListener("submit", (event) => {
   generate();
 });
 
-sizeSwitch.querySelectorAll<HTMLInputElement>('input[name="size"]').forEach((input) => {
-  input.addEventListener("change", () => {
-    placeThumb(true);
-    if (currentCodes.length > 0) showLabels(currentCodes);
-    else showExample();
-  });
+pickForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  generatePick();
+});
+
+function reclaimFromMask(event: Event): void {
+  event.preventDefault();
+  focusContainer(containerInput.value.length > 0);
+  setTimeout(() => {
+    if (document.activeElement === pickMask) focusContainer(containerInput.value.length > 0);
+  }, 0);
+}
+
+pickMask.addEventListener("pointerdown", reclaimFromMask);
+pickMask.addEventListener("click", reclaimFromMask);
+
+function schedulePickMask(): void {
+  setTimeout(syncPickMask, 0);
+}
+
+containerInput.addEventListener("focus", () => {
+  pickMask.hidden = true;
+  if (containerInput.value.length > 0) armContainerSelect();
+});
+
+containerInput.addEventListener("blur", schedulePickMask);
+document.addEventListener("pointerup", schedulePickMask);
+document.addEventListener("focusin", () => {
+  if (document.activeElement === containerInput) pickMask.hidden = true;
+  else schedulePickMask();
+});
+
+document.addEventListener("selectionchange", () => {
+  if (!suppressCaret) return;
+  selectContainerText();
 });
 
 printLabelBtn.addEventListener("click", () => {
-  applyPage("label");
-  window.print();
+  openExport("label");
 });
 
 printA4Btn.addEventListener("click", () => {
-  applyPage("a4");
+  openExport("a4");
+});
+
+exportDialog.addEventListener("close", () => {
+  const mode = pendingPrint;
+  pendingPrint = null;
+  syncPickMask();
+  if (exportDialog.returnValue !== "ok" || !mode) return;
+  applyPage(mode);
   window.print();
 });
 
@@ -283,5 +482,5 @@ window.addEventListener("beforeprint", () => {
 });
 
 window.addEventListener("afterprint", () => {
-  document.body.removeAttribute("data-print");
+  restoreScreen();
 });
