@@ -114,7 +114,7 @@ select {
 
 .home {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
 }
 
@@ -162,7 +162,8 @@ select {
   flex: 1 1 16rem;
 }
 
-.pick-field .field-label {
+.pick-field .field-label,
+.barcode-field .field-label {
   position: static;
   width: auto;
   height: auto;
@@ -170,6 +171,68 @@ select {
   overflow: visible;
   clip: auto;
   color: var(--text-secondary);
+}
+
+.barcode-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 24px;
+}
+
+.barcode-main {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.barcode-field { flex: 1 1 16rem; }
+
+#barcode-form .alert { margin: 0 24px 16px; }
+
+.barcode-sizes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+
+  legend {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    font-weight: 600;
+  }
+}
+
+.copy-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.copy-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.copy-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.copy-row {
+  display: flex;
+  gap: 8px;
+
+  input { flex: 1; min-width: 0; }
 }
 
 #pick-form .alert { margin-bottom: 16px; }
@@ -329,9 +392,15 @@ select {
 }
 
 .stage-bar {
-  display: flex;
+  display: none;
   align-items: center;
   padding: 8px 12px;
+}
+
+body[data-route="barcode"] .stage-bar[data-export="barcode"],
+body[data-route="location"] .stage-bar[data-export="location"],
+body[data-route="pick"] .stage-bar[data-export="pick"] {
+  display: flex;
 }
 
 .export-fold {
@@ -546,6 +615,11 @@ button.primary {
 
 .preview:empty { display: none; }
 
+.preview.preview-barcode {
+  grid-template-columns: minmax(0, 520px);
+  justify-content: center;
+}
+
 .preview.is-example {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -655,6 +729,21 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
   padding: 8px 10px 6px;
 }
 
+.label-7x2 {
+  width: min(100%, 196px);
+  height: auto;
+  aspect-ratio: 7 / 2;
+  padding: 4px 6px 3px;
+}
+
+.preview-barcode .label-15x10 { width: min(100%, 480px); }
+.preview-barcode .label-7x4 { width: min(100%, 420px); }
+
+.preview-barcode .label-7x2 {
+  width: min(100%, 490px);
+  padding: 10px 14px 8px;
+}
+
 .barcode-wrap {
   flex: none;
   width: 92%;
@@ -672,11 +761,47 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
 .label p {
   margin: 0;
   max-width: 100%;
-  font-family: Arial, "Helvetica Neue", sans-serif;
+  font-family: Arial, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   font-weight: 700;
   text-align: center;
   line-height: 1.1;
   white-space: nowrap;
+}
+
+.label.has-copy {
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+.label.has-copy .label-above,
+.label.has-copy .label-below {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.label.has-copy .barcode-wrap {
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 46%;
+}
+
+.label.has-copy .barcode-wrap svg {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+}
+
+.label.has-copy :is(.label-line, .label-code) {
+  margin: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: visible;
 }
 
 .label-fluid p {
@@ -692,6 +817,16 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
 .label-7x4 p {
   margin-top: 6px;
   font-size: 12px;
+}
+
+.label-7x2 p {
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+.preview-barcode .label-7x2 .label-code {
+  margin-top: 4px;
+  font-size: 14px;
 }
 
 .export-dialog {
@@ -785,7 +920,8 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
     grid-auto-flow: row;
   }
 
-  .home { grid-template-columns: 1fr; }
+  .home,
+  .copy-editor { grid-template-columns: 1fr; }
 
   .seg-head { display: none; }
 
@@ -842,9 +978,11 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
     background: white;
     animation: none;
   }
-  .preview {
+  .preview,
+  .preview.preview-barcode {
     display: flex;
     grid-template-columns: none;
+    justify-content: stretch;
     margin: 0;
     padding: 0;
     gap: 0;
@@ -858,24 +996,40 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
     transition: none;
     aspect-ratio: auto;
   }
-  .label-15x10 {
-    width: 15cm;
-    height: 10cm;
-    padding: 0.7cm 0.9cm 0.55cm;
-  }
-  .label-7x4 {
+  .label-7x4,
+  .preview-barcode .label-7x4 {
     width: 7cm;
     height: 4cm;
     padding: 0.22cm 0.32cm 0.16cm;
   }
-  .label-15x10 p {
+  .label-7x2,
+  .preview-barcode .label-7x2 {
+    width: 7cm;
+    height: 2cm;
+    padding: 0.08cm 0.16cm;
+  }
+  .label-15x10,
+  .preview-barcode .label-15x10 {
+    width: 15cm;
+    height: 10cm;
+    padding: 0.7cm 0.9cm 0.55cm;
+  }
+  .label-15x10 p,
+  .preview-barcode .label-15x10 .label-code {
     margin-top: 0.28cm;
     font-size: 22pt;
   }
-  .label-7x4 p {
+  .label-7x4 p,
+  .preview-barcode .label-7x4 .label-code {
     margin-top: 0.1cm;
     font-size: 11pt;
   }
+  .label-7x2 p,
+  .preview-barcode .label-7x2 .label-code {
+    margin-top: 0.04cm;
+    font-size: 8pt;
+  }
+  .label.has-copy :is(.label-line, .label-code) { margin: 0; }
 
   body[data-print="label"] .preview { display: block; }
   body[data-print="label"] .label {
@@ -898,6 +1052,12 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
     column-gap: 8mm;
     row-gap: 0;
   }
+  body[data-print="a4"][data-size="7x2"] .preview {
+    grid-template-columns: repeat(2, 7cm);
+    grid-auto-rows: 2cm;
+    column-gap: 8mm;
+    row-gap: 0;
+  }
   body[data-print="a4"][data-size="15x10"] .label {
     break-after: page;
     page-break-after: always;
@@ -909,6 +1069,7 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
 
   body[data-print="a4"][data-route="pick"] .preview,
   body[data-print="a4"][data-route="pick"][data-size="7x4"] .preview,
+  body[data-print="a4"][data-route="pick"][data-size="7x2"] .preview,
   body[data-print="a4"][data-route="pick"][data-size="15x10"] .preview {
     display: grid;
     grid-auto-flow: column;
@@ -923,6 +1084,12 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
   body[data-print="a4"][data-route="pick"][data-size="7x4"] .preview {
     grid-template-columns: repeat(2, 7cm);
     grid-template-rows: repeat(4, 4cm);
+    row-gap: 0;
+  }
+
+  body[data-print="a4"][data-route="pick"][data-size="7x2"] .preview {
+    grid-template-columns: repeat(2, 7cm);
+    grid-template-rows: repeat(4, 2cm);
     row-gap: 0;
   }
 

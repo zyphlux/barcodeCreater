@@ -15,6 +15,7 @@
         <h1>条码生成</h1>
       </a>
       <nav id="tabs" class="tabs" hidden>
+        <a href="/barcode" data-route="barcode">条码生成器</a>
         <a href="/location" data-route="location">库位条码</a>
         <a href="/pick" data-route="pick">拣选框</a>
       </nav>
@@ -23,6 +24,10 @@
 
     <div class="page">
       <section id="home" class="home">
+        <a class="entry" href="/barcode">
+          <h2>条码生成器</h2>
+          <p>输入内容生成条码，并可在上下方添加文字</p>
+        </a>
         <a class="entry" href="/location">
           <h2>库位条码</h2>
           <p>按四段编号批量生成库位标签</p>
@@ -73,13 +78,65 @@
         </p>
       </form>
 
+      <form id="barcode-form" class="panel no-print" hidden>
+        <div class="barcode-body">
+          <div class="barcode-main">
+            <label class="field barcode-field">
+              <span class="field-label">条码内容</span>
+              <input id="barcode-value" name="barcode" type="text" autocomplete="off" placeholder="例如 ABC-001" />
+            </label>
+            <button type="submit" class="primary">生成条码</button>
+          </div>
+          <fieldset class="barcode-sizes">
+            <legend>标签尺寸</legend>
+            <label class="export-size"><input type="radio" name="barcode-size" value="15x10" checked />15×10 cm</label>
+            <label class="export-size"><input type="radio" name="barcode-size" value="7x4" />7×4 cm</label>
+            <label class="export-size"><input type="radio" name="barcode-size" value="7x2" />7×2 cm</label>
+          </fieldset>
+          <div class="copy-editor">
+            <div class="copy-side">
+              <div class="copy-head">
+                <span>上方文字</span>
+                <button type="button" class="copy-add" data-side="above">添加一行</button>
+              </div>
+              <div class="copy-lines" data-side="above"></div>
+            </div>
+            <div class="copy-side">
+              <div class="copy-head">
+                <span>下方文字</span>
+                <button type="button" class="copy-add" data-side="below">添加一行</button>
+              </div>
+              <div class="copy-lines" data-side="below"></div>
+            </div>
+          </div>
+        </div>
+        <p id="barcode-error" class="alert" role="alert" hidden>
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path fill="currentColor" d="M8 1.2a6.8 6.8 0 1 0 0 13.6A6.8 6.8 0 0 0 8 1.2zM7.2 4.6h1.6v4.6H7.2zm0 5.8h1.6V12H7.2z" />
+          </svg>
+          <span id="barcode-error-text"></span>
+        </p>
+      </form>
+
       <section id="stage" class="stage" hidden>
-        <div class="stage-bar no-print">
+        <div class="stage-bar no-print" data-export="barcode">
+          <div class="actions">
+            <button type="button" class="print-label" disabled>打印 / 导出 PDF</button>
+            <button type="button" class="print-a4" disabled>A4 拼版打印</button>
+          </div>
+        </div>
+        <div class="stage-bar no-print" data-export="location">
+          <div class="actions">
+            <button type="button" class="print-label" disabled>打印 / 导出 PDF</button>
+            <button type="button" class="print-a4" disabled>A4 拼版打印</button>
+          </div>
+        </div>
+        <div class="stage-bar no-print" data-export="pick">
           <details class="export-fold">
             <summary>打印 / 导出</summary>
             <div class="actions">
-              <button type="button" id="print-label" disabled>打印 / 导出 PDF</button>
-              <button type="button" id="print-a4" disabled>A4 拼版打印</button>
+              <button type="button" class="print-label" disabled>打印 / 导出 PDF</button>
+              <button type="button" class="print-a4" disabled>A4 拼版打印</button>
             </div>
           </details>
         </div>
@@ -95,6 +152,7 @@
           <legend>标签尺寸</legend>
           <label class="export-size"><input type="radio" name="export-size" value="15x10" checked />15×10 cm</label>
           <label class="export-size"><input type="radio" name="export-size" value="7x4" />7×4 cm</label>
+          <label class="export-size"><input type="radio" name="export-size" value="7x2" />7×2 cm</label>
         </fieldset>
         <div class="export-actions">
           <button value="cancel">取消</button>

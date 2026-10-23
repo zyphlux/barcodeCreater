@@ -5,7 +5,17 @@ import {
   type GrowthMode,
   type SegmentConfig,
 } from "./generate";
-import { renderLabels, type PrintSize } from "./labels";
+import { barcodeCode } from "./barcode";
+import {
+  applyLabelSize,
+  fitLabels,
+  isPrintSize,
+  labelSizeClass,
+  renderLabels,
+  setLabelCopy,
+  type LabelExtras,
+  type PrintSize,
+} from "./labels";
 import { pickingCodes } from "./picking";
 
 const MODES: { value: GrowthMode; label: string }[] = [
@@ -26,7 +36,14 @@ const TITLES = {
   home: "条码生成",
   location: "库位条码",
   pick: "拣选框",
+  barcode: "条码生成器",
 } as const;
+
+const PAGE_SIZE: Record<PrintSize, string> = {
+  "15x10": "15cm 10cm",
+  "7x4": "7cm 4cm",
+  "7x2": "7cm 2cm",
+};
 
 type AppRoute = keyof typeof TITLES;
 
@@ -34,6 +51,8 @@ const home = document.querySelector<HTMLElement>("#home")!;
 const tabs = document.querySelector<HTMLElement>("#tabs")!;
 const form = document.querySelector<HTMLFormElement>("#form")!;
 const pickForm = document.querySelector<HTMLFormElement>("#pick-form")!;
+const barcodeForm = document.querySelector<HTMLFormElement>("#barcode-form")!;
+const barcodeInput = document.querySelector<HTMLInputElement>("#barcode-value")!;
 const containerInput = document.querySelector<HTMLInputElement>("#container")!;
 const segmentsRoot = document.querySelector<HTMLElement>("#segments")!;
 const countEl = document.querySelector<HTMLElement>("#count")!;
@@ -41,10 +60,12 @@ const errorEl = document.querySelector<HTMLElement>("#error")!;
 const errorText = document.querySelector<HTMLElement>("#error-text")!;
 const pickErrorEl = document.querySelector<HTMLElement>("#pick-error")!;
 const pickErrorText = document.querySelector<HTMLElement>("#pick-error-text")!;
+const barcodeErrorEl = document.querySelector<HTMLElement>("#barcode-error")!;
+const barcodeErrorText = document.querySelector<HTMLElement>("#barcode-error-text")!;
 const stage = document.querySelector<HTMLElement>("#stage")!;
 const preview = document.querySelector<HTMLElement>("#preview")!;
-const printLabelBtn = document.querySelector<HTMLButtonElement>("#print-label")!;
-const printA4Btn = document.querySelector<HTMLButtonElement>("#print-a4")!;
+const printLabelButtons = [...document.querySelectorAll<HTMLButtonElement>(".print-label")];
+const printA4Buttons = [...document.querySelectorAll<HTMLButtonElement>(".print-a4")];
 const pageSize = document.querySelector<HTMLStyleElement>("#page-size")!;
 const exportDialog = document.querySelector<HTMLDialogElement>("#export-dialog")!;
 const pickMask = document.querySelector<HTMLButtonElement>("#pick-mask")!;
@@ -54,6 +75,8 @@ let currentRoute: AppRoute = "home";
 let currentCodes: string[] = [];
 let locationCodes: string[] = [];
 let pickCodes: string[] = [];
+let barcodeValue = "";
+let barcodeSize: PrintSize = "15x10";
 let opened = false;
 let pendingPrint: "label" | "a4" | null = null;
 
@@ -148,12 +171,12 @@ function readSegments(): SegmentConfig[] {
 
 function exportSize(): PrintSize {
   const selected = exportDialog.querySelector<HTMLInputElement>('input[name="export-size"]:checked');
-  return selected?.value === "7x4" ? "7x4" : "15x10";
+  return isPrintSize(selected?.value) ? selected.value : "15x10";
 }
 
 function setPrintEnabled(enabled: boolean): void {
-  printLabelBtn.disabled = !enabled;
-  printA4Btn.disabled = !enabled;
+  for (const button of printLabelButtons) button.disabled = !enabled;
+  for (const button of printA4Buttons) button.disabled = !enabled;
 }
 
 function setError(message: string): void {
@@ -164,6 +187,11 @@ function setError(message: string): void {
 function setPickError(message: string): void {
   pickErrorText.textContent = message;
   pickErrorEl.hidden = message.length === 0;
+}
+
+function setBarcodeError(message: string): void {
+  barcodeErrorText.textContent = message;
+  barcodeErrorEl.hidden = message.length === 0;
 }
 
 function renderCount(count: number | null, tick: boolean): void {
@@ -186,11 +214,46 @@ function setBarcodeFit(mode: "meet" | "slice"): void {
 }
 
 function setLabelSizeClass(size: PrintSize | "fluid"): void {
-  const on = size === "fluid" ? "label-fluid" : size === "15x10" ? "label-15x10" : "label-7x4";
-  preview.querySelectorAll<HTMLElement>(".label").forEach((label) => {
-    label.classList.remove("label-fluid", "label-15x10", "label-7x4");
-    label.classList.add(on);
-  });
+  preview.querySelectorAll<HTMLElement>(".label").forEach((label) => applyLabelSize(label, size));
+}
+
+function readCopy(side: "above" | "below"): string[] {
+  const host = barcodeForm.querySelector<HTMLElement>(`.copy-lines[data-side="${side}"]`);
+  if (!host) return [];
+  return [...host.querySelectorAll<HTMLInputElement>("input")]
+    .map((input) => input.value.trim())
+    .filter((line) => line.length > 0);
+}
+
+function barcodeExtras(): LabelExtras {
+  return { above: readCopy("above"), below: readCopy("below") };
+}
+
+function refreshBarcodeCopy(): void {
+  if (currentRoute !== "barcode" || !barcodeValue) return;
+  const label = preview.querySelector<HTMLElement>(".label");
+  if (!label) return;
+  const extras = barcodeExtras();
+  setLabelCopy(label, extras.above, extras.below);
+  fitLabels(preview);
+}
+
+function addCopyLine(side: "above" | "below"): void {
+  const host = barcodeForm.querySelector<HTMLElement>(`.copy-lines[data-side="${side}"]`);
+  if (!host) return;
+  const row = document.createElement("div");
+  row.className = "copy-row";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.autocomplete = "off";
+  input.placeholder = side === "above" ? "条码上方的一行" : "条码下方的一行";
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "copy-remove";
+  remove.textContent = "删除";
+  row.append(input, remove);
+  host.append(row);
+  input.focus();
 }
 
 function sameCodes(codes: string[]): boolean {
@@ -217,16 +280,45 @@ function showExample(): void {
   currentCodes = [];
   document.body.dataset.size = "fluid";
   preview.classList.add("is-example");
-  preview.classList.remove("preview-pick");
+  preview.classList.remove("preview-pick", "preview-barcode");
   renderLabels(preview, [EXAMPLE_CODE], "fluid");
   setPrintEnabled(false);
 }
 
 function showPickEmpty(): void {
   currentCodes = [];
-  preview.classList.remove("is-example", "preview-pick");
+  preview.classList.remove("is-example", "preview-pick", "preview-barcode");
   preview.replaceChildren();
   setPrintEnabled(false);
+}
+
+function showBarcodeEmpty(): void {
+  currentCodes = [];
+  preview.classList.remove("is-example", "preview-pick", "preview-barcode");
+  preview.replaceChildren();
+  setPrintEnabled(false);
+}
+
+function showBarcode(): void {
+  const extras = barcodeExtras();
+  const sizeClass = labelSizeClass(barcodeSize);
+  const existing = preview.querySelector<HTMLElement>(".label");
+  const reuse =
+    existing !== null &&
+    currentCodes.length === 1 &&
+    currentCodes[0] === barcodeValue &&
+    preview.childElementCount === 1 &&
+    existing.classList.contains(sizeClass);
+
+  currentCodes = [barcodeValue];
+  document.body.dataset.size = barcodeSize;
+  preview.classList.remove("is-example", "preview-pick");
+  preview.classList.add("preview-barcode");
+  if (reuse && existing) setLabelCopy(existing, extras.above, extras.below);
+  else renderLabels(preview, [barcodeValue], barcodeSize, extras);
+  setBarcodeFit("meet");
+  fitLabels(preview);
+  setPrintEnabled(true);
 }
 
 function showLabels(codes: string[]): void {
@@ -234,10 +326,11 @@ function showLabels(codes: string[]): void {
   const reuse =
     sameCodes(codes) &&
     preview.childElementCount === codes.length &&
-    preview.classList.contains("preview-pick") === pickLayout;
+    preview.classList.contains("preview-pick") === pickLayout &&
+    !preview.classList.contains("preview-barcode");
   currentCodes = codes;
   document.body.dataset.size = "fluid";
-  preview.classList.remove("is-example");
+  preview.classList.remove("is-example", "preview-barcode");
   preview.classList.toggle("preview-pick", pickLayout);
   if (reuse) setLabelSizeClass("fluid");
   else renderLabels(preview, codes, "fluid");
@@ -251,6 +344,11 @@ function syncPreview(): void {
     else showPickEmpty();
     return;
   }
+  if (currentRoute === "barcode") {
+    if (barcodeValue) showBarcode();
+    else showBarcodeEmpty();
+    return;
+  }
   if (currentRoute === "location") {
     if (locationCodes.length > 0) showLabels(locationCodes);
     else showExample();
@@ -262,7 +360,7 @@ function generate(): void {
   if (!result.ok) {
     locationCodes = [];
     currentCodes = [];
-    preview.classList.remove("is-example", "preview-pick");
+    preview.classList.remove("is-example", "preview-pick", "preview-barcode");
     preview.replaceChildren();
     renderCount(null, false);
     setError(result.error);
@@ -312,7 +410,7 @@ function generatePick(): void {
   if (!result.ok) {
     pickCodes = [];
     currentCodes = [];
-    preview.classList.remove("is-example", "preview-pick");
+    preview.classList.remove("is-example", "preview-pick", "preview-barcode");
     preview.replaceChildren();
     setPickError(result.error);
     setPrintEnabled(false);
@@ -324,19 +422,42 @@ function generatePick(): void {
   focusContainer(true);
 }
 
+function generateBarcode(): void {
+  const result = barcodeCode(barcodeInput.value);
+  if (!result.ok) {
+    barcodeValue = "";
+    currentCodes = [];
+    preview.classList.remove("is-example", "preview-pick", "preview-barcode");
+    preview.replaceChildren();
+    setBarcodeError(result.error);
+    setPrintEnabled(false);
+    return;
+  }
+  setBarcodeError("");
+  barcodeValue = result.code;
+  showBarcode();
+}
+
 function applyPage(mode: "label" | "a4"): void {
   const size = exportSize();
   document.body.dataset.print = mode;
   document.body.dataset.size = size;
   setLabelSizeClass(size);
   setBarcodeFit("meet");
-  const page = mode === "a4" ? "A4" : size === "15x10" ? "15cm 10cm" : "7cm 4cm";
+  const page = mode === "a4" ? "A4" : PAGE_SIZE[size];
   const margin = mode === "a4" ? "6mm" : "0";
   pageSize.textContent = `@page { size: ${page}; margin: ${margin}; }`;
 }
 
 function restoreScreen(): void {
   document.body.removeAttribute("data-print");
+  if (currentRoute === "barcode" && barcodeValue) {
+    document.body.dataset.size = barcodeSize;
+    setLabelSizeClass(barcodeSize);
+    setBarcodeFit("meet");
+    fitLabels(preview);
+    return;
+  }
   document.body.dataset.size = "fluid";
   if (preview.querySelector(".label")) {
     setLabelSizeClass("fluid");
@@ -347,6 +468,10 @@ function restoreScreen(): void {
 function openExport(mode: "label" | "a4"): void {
   pendingPrint = mode;
   exportMode.textContent = mode === "a4" ? "A4 拼版打印" : "打印 / 导出 PDF";
+  if (currentRoute === "barcode") {
+    const radio = exportDialog.querySelector<HTMLInputElement>(`input[name="export-size"][value="${barcodeSize}"]`);
+    if (radio) radio.checked = true;
+  }
   pickMask.hidden = true;
   exportDialog.showModal();
 }
@@ -355,6 +480,7 @@ function routeFromPath(pathname: string): { path: string; route: AppRoute } {
   const path = pathname.replace(/\/+$/, "") || "/";
   if (path === "/location") return { path, route: "location" };
   if (path === "/pick") return { path, route: "pick" };
+  if (path === "/barcode") return { path, route: "barcode" };
   return { path: "/", route: "home" };
 }
 
@@ -370,6 +496,7 @@ function renderRoute(): void {
   tabs.hidden = atHome;
   form.hidden = next.route !== "location";
   pickForm.hidden = next.route !== "pick";
+  barcodeForm.hidden = next.route !== "barcode";
   stage.hidden = atHome;
 
   tabs.querySelectorAll<HTMLAnchorElement>("a").forEach((link) => {
@@ -428,6 +555,36 @@ pickForm.addEventListener("submit", (event) => {
   generatePick();
 });
 
+barcodeForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  generateBarcode();
+});
+
+barcodeForm.addEventListener("input", (event) => {
+  if (!(event.target instanceof HTMLInputElement)) return;
+  if (event.target.closest(".copy-lines")) refreshBarcodeCopy();
+});
+
+barcodeForm.addEventListener("change", (event) => {
+  if (!(event.target instanceof HTMLInputElement) || event.target.name !== "barcode-size") return;
+  if (!isPrintSize(event.target.value)) return;
+  barcodeSize = event.target.value;
+  if (barcodeValue) showBarcode();
+});
+
+barcodeForm.addEventListener("click", (event) => {
+  const button = (event.target as Element | null)?.closest("button");
+  if (!(button instanceof HTMLButtonElement)) return;
+  if (button.classList.contains("copy-add")) {
+    addCopyLine(button.dataset.side === "below" ? "below" : "above");
+    return;
+  }
+  if (button.classList.contains("copy-remove")) {
+    button.closest(".copy-row")?.remove();
+    refreshBarcodeCopy();
+  }
+});
+
 function reclaimFromMask(event: Event): void {
   event.preventDefault();
   focusContainer(containerInput.value.length > 0);
@@ -460,12 +617,11 @@ document.addEventListener("selectionchange", () => {
   selectContainerText();
 });
 
-printLabelBtn.addEventListener("click", () => {
-  openExport("label");
-});
-
-printA4Btn.addEventListener("click", () => {
-  openExport("a4");
+stage.addEventListener("click", (event) => {
+  const button = (event.target as Element | null)?.closest("button");
+  if (!(button instanceof HTMLButtonElement) || button.disabled) return;
+  if (button.classList.contains("print-label")) openExport("label");
+  if (button.classList.contains("print-a4")) openExport("a4");
 });
 
 exportDialog.addEventListener("close", () => {
@@ -479,7 +635,16 @@ exportDialog.addEventListener("close", () => {
 
 window.addEventListener("beforeprint", () => {
   if (!document.body.dataset.print) applyPage("label");
+  fitLabels(preview);
 });
+
+function refitBarcode(): void {
+  if (document.body.dataset.print) return;
+  if (currentRoute === "barcode") fitLabels(preview);
+}
+
+window.addEventListener("resize", refitBarcode);
+document.fonts.ready.then(refitBarcode);
 
 window.addEventListener("afterprint", () => {
   restoreScreen();
