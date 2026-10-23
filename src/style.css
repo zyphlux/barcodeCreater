@@ -189,6 +189,22 @@ select {
 
 .barcode-field { flex: 1 1 16rem; }
 
+.barcode-batch {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.barcode-foot {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
 #barcode-form .alert { margin: 0 24px 16px; }
 
 .barcode-sizes {
@@ -620,6 +636,15 @@ button.primary {
   justify-content: center;
 }
 
+.preview.preview-barcode.is-batch {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  justify-content: stretch;
+}
+
+.preview.preview-barcode.is-batch :is(.label-15x10, .label-7x4, .label-7x2) {
+  width: 100%;
+}
+
 .preview.is-example {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -921,7 +946,8 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
   }
 
   .home,
-  .copy-editor { grid-template-columns: 1fr; }
+  .copy-editor,
+  .barcode-batch { grid-template-columns: 1fr; }
 
   .seg-head { display: none; }
 
@@ -979,7 +1005,8 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
     animation: none;
   }
   .preview,
-  .preview.preview-barcode {
+  .preview.preview-barcode,
+  .preview.preview-barcode.is-batch {
     display: flex;
     grid-template-columns: none;
     justify-content: stretch;
@@ -997,19 +1024,22 @@ body[data-route="pick"] .preview.preview-pick .label-fluid p {
     aspect-ratio: auto;
   }
   .label-7x4,
-  .preview-barcode .label-7x4 {
+  .preview-barcode .label-7x4,
+  .preview.preview-barcode.is-batch .label-7x4 {
     width: 7cm;
     height: 4cm;
     padding: 0.22cm 0.32cm 0.16cm;
   }
   .label-7x2,
-  .preview-barcode .label-7x2 {
+  .preview-barcode .label-7x2,
+  .preview.preview-barcode.is-batch .label-7x2 {
     width: 7cm;
     height: 2cm;
     padding: 0.08cm 0.16cm;
   }
   .label-15x10,
-  .preview-barcode .label-15x10 {
+  .preview-barcode .label-15x10,
+  .preview.preview-barcode.is-batch .label-15x10 {
     width: 15cm;
     height: 10cm;
     padding: 0.7cm 0.9cm 0.55cm;

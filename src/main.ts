@@ -5,7 +5,7 @@ import {
   type GrowthMode,
   type SegmentConfig,
 } from "./generate";
-import { barcodeCode } from "./barcode";
+import { barcodeBatch, barcodeCode, type BarcodeBatchConfig } from "./barcode";
 import {
   applyLabelSize,
   fitLabels,
@@ -62,6 +62,9 @@ const pickErrorEl = document.querySelector<HTMLElement>("#pick-error")!;
 const pickErrorText = document.querySelector<HTMLElement>("#pick-error-text")!;
 const barcodeErrorEl = document.querySelector<HTMLElement>("#barcode-error")!;
 const barcodeErrorText = document.querySelector<HTMLElement>("#barcode-error-text")!;
+const barcodeCountEl = document.querySelector<HTMLElement>("#barcode-count")!;
+const barcodeSingle = document.querySelector<HTMLElement>("#barcode-single")!;
+const barcodeBatchPanel = document.querySelector<HTMLElement>("#barcode-batch")!;
 const stage = document.querySelector<HTMLElement>("#stage")!;
 const preview = document.querySelector<HTMLElement>("#preview")!;
 const printLabelButtons = [...document.querySelectorAll<HTMLButtonElement>(".print-label")];
@@ -75,7 +78,7 @@ let currentRoute: AppRoute = "home";
 let currentCodes: string[] = [];
 let locationCodes: string[] = [];
 let pickCodes: string[] = [];
-let barcodeValue = "";
+let barcodeCodes: string[] = [];
 let barcodeSize: PrintSize = "15x10";
 let opened = false;
 let pendingPrint: "label" | "a4" | null = null;
@@ -230,12 +233,76 @@ function barcodeExtras(): LabelExtras {
 }
 
 function refreshBarcodeCopy(): void {
-  if (currentRoute !== "barcode" || !barcodeValue) return;
-  const label = preview.querySelector<HTMLElement>(".label");
-  if (!label) return;
+  if (currentRoute !== "barcode" || barcodeCodes.length === 0) return;
+  const labels = [...preview.querySelectorAll<HTMLElement>(".label")];
+  if (labels.length === 0) return;
   const extras = barcodeExtras();
-  setLabelCopy(label, extras.above, extras.below);
+  for (const label of labels) setLabelCopy(label, extras.above, extras.below);
   fitLabels(preview);
+}
+
+function barcodeMode(): "single" | "batch" {
+  const selected = barcodeForm.querySelector<HTMLInputElement>('input[name="barcode-mode"]:checked');
+  return selected?.value === "batch" ? "batch" : "single";
+}
+
+function syncBarcodeMode(): void {
+  const batch = barcodeMode() === "batch";
+  barcodeSingle.hidden = batch;
+  barcodeBatchPanel.hidden = !batch;
+}
+
+function batchInput(name: string): HTMLInputElement {
+  return barcodeBatchPanel.querySelector<HTMLInputElement>(`[name="${name}"]`)!;
+}
+
+function batchNumbersReady(): boolean {
+  return ["batch-start", "batch-end", "batch-step", "batch-digits"].every(
+    (name) => batchInput(name).value.trim() !== "",
+  );
+}
+
+function readBatch(): BarcodeBatchConfig {
+  const mode = barcodeBatchPanel.querySelector<HTMLSelectElement>('[name="batch-mode"]')!.value;
+  return {
+    prefix: batchInput("batch-prefix").value,
+    suffix: batchInput("batch-suffix").value,
+    start: readInteger(batchInput("batch-start")),
+    end: readInteger(batchInput("batch-end")),
+    step: readInteger(batchInput("batch-step")),
+    digits: readInteger(batchInput("batch-digits")),
+    mode: mode === "dec" ? "dec" : "inc",
+  };
+}
+
+function renderBarcodeCount(count: number | null): void {
+  barcodeCountEl.replaceChildren();
+  if (count === null) {
+    barcodeCountEl.textContent = "无法计算张数";
+    return;
+  }
+  barcodeCountEl.append("将生成 ");
+  const number = document.createElement("strong");
+  number.className = "count-num";
+  number.textContent = String(count);
+  barcodeCountEl.append(number, " 张");
+}
+
+function refreshBarcodeCount(): void {
+  if (barcodeMode() !== "batch") return;
+  if (!batchNumbersReady()) {
+    setBarcodeError("");
+    barcodeCountEl.textContent = "填写后生成";
+    return;
+  }
+  const result = barcodeBatch(readBatch());
+  if (!result.ok) {
+    renderBarcodeCount(null);
+    setBarcodeError(result.error);
+    return;
+  }
+  setBarcodeError("");
+  renderBarcodeCount(result.count);
 }
 
 function addCopyLine(side: "above" | "below"): void {
@@ -294,7 +361,7 @@ function showPickEmpty(): void {
 
 function showBarcodeEmpty(): void {
   currentCodes = [];
-  preview.classList.remove("is-example", "preview-pick", "preview-barcode");
+  preview.classList.remove("is-example", "preview-pick", "preview-barcode", "is-batch");
   preview.replaceChildren();
   setPrintEnabled(false);
 }
@@ -305,20 +372,24 @@ function showBarcode(): void {
   const existing = preview.querySelector<HTMLElement>(".label");
   const reuse =
     existing !== null &&
-    currentCodes.length === 1 &&
-    currentCodes[0] === barcodeValue &&
-    preview.childElementCount === 1 &&
+    sameCodes(barcodeCodes) &&
+    preview.childElementCount === barcodeCodes.length &&
+    preview.classList.contains("preview-barcode") &&
     existing.classList.contains(sizeClass);
 
-  currentCodes = [barcodeValue];
+  currentCodes = barcodeCodes.slice();
   document.body.dataset.size = barcodeSize;
   preview.classList.remove("is-example", "preview-pick");
   preview.classList.add("preview-barcode");
-  if (reuse && existing) setLabelCopy(existing, extras.above, extras.below);
-  else renderLabels(preview, [barcodeValue], barcodeSize, extras);
+  preview.classList.toggle("is-batch", barcodeCodes.length > 1);
+  if (reuse) {
+    for (const label of preview.querySelectorAll<HTMLElement>(".label")) {
+      setLabelCopy(label, extras.above, extras.below);
+    }
+  } else renderLabels(preview, barcodeCodes, barcodeSize, extras);
   setBarcodeFit("meet");
   fitLabels(preview);
-  setPrintEnabled(true);
+  setPrintEnabled(barcodeCodes.length > 0);
 }
 
 function showLabels(codes: string[]): void {
@@ -345,7 +416,7 @@ function syncPreview(): void {
     return;
   }
   if (currentRoute === "barcode") {
-    if (barcodeValue) showBarcode();
+    if (barcodeCodes.length > 0) showBarcode();
     else showBarcodeEmpty();
     return;
   }
@@ -422,19 +493,36 @@ function generatePick(): void {
   focusContainer(true);
 }
 
+function clearBarcodePreview(message: string): void {
+  barcodeCodes = [];
+  currentCodes = [];
+  preview.classList.remove("is-example", "preview-pick", "preview-barcode", "is-batch");
+  preview.replaceChildren();
+  setBarcodeError(message);
+  setPrintEnabled(false);
+}
+
 function generateBarcode(): void {
+  if (barcodeMode() === "batch") {
+    const result = barcodeBatch(readBatch());
+    if (!result.ok) {
+      clearBarcodePreview(result.error);
+      renderBarcodeCount(null);
+      return;
+    }
+    setBarcodeError("");
+    renderBarcodeCount(result.count);
+    barcodeCodes = result.codes;
+    showBarcode();
+    return;
+  }
   const result = barcodeCode(barcodeInput.value);
   if (!result.ok) {
-    barcodeValue = "";
-    currentCodes = [];
-    preview.classList.remove("is-example", "preview-pick", "preview-barcode");
-    preview.replaceChildren();
-    setBarcodeError(result.error);
-    setPrintEnabled(false);
+    clearBarcodePreview(result.error);
     return;
   }
   setBarcodeError("");
-  barcodeValue = result.code;
+  barcodeCodes = [result.code];
   showBarcode();
 }
 
@@ -451,7 +539,7 @@ function applyPage(mode: "label" | "a4"): void {
 
 function restoreScreen(): void {
   document.body.removeAttribute("data-print");
-  if (currentRoute === "barcode" && barcodeValue) {
+  if (currentRoute === "barcode" && barcodeCodes.length > 0) {
     document.body.dataset.size = barcodeSize;
     setLabelSizeClass(barcodeSize);
     setBarcodeFit("meet");
@@ -525,6 +613,7 @@ function navigate(pathname: string): void {
 
 buildSegments();
 refreshCount();
+syncBarcodeMode();
 renderRoute();
 window.addEventListener("popstate", renderRoute);
 
@@ -561,15 +650,27 @@ barcodeForm.addEventListener("submit", (event) => {
 });
 
 barcodeForm.addEventListener("input", (event) => {
-  if (!(event.target instanceof HTMLInputElement)) return;
-  if (event.target.closest(".copy-lines")) refreshBarcodeCopy();
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+  if (target.closest(".copy-lines")) refreshBarcodeCopy();
+  if (target.closest("#barcode-batch")) refreshBarcodeCount();
 });
 
 barcodeForm.addEventListener("change", (event) => {
-  if (!(event.target instanceof HTMLInputElement) || event.target.name !== "barcode-size") return;
-  if (!isPrintSize(event.target.value)) return;
-  barcodeSize = event.target.value;
-  if (barcodeValue) showBarcode();
+  const target = event.target;
+  if (target instanceof HTMLInputElement && target.name === "barcode-mode") {
+    syncBarcodeMode();
+    refreshBarcodeCount();
+    return;
+  }
+  if (target instanceof HTMLSelectElement && target.name === "batch-mode") {
+    refreshBarcodeCount();
+    return;
+  }
+  if (!(target instanceof HTMLInputElement) || target.name !== "barcode-size") return;
+  if (!isPrintSize(target.value)) return;
+  barcodeSize = target.value;
+  if (barcodeCodes.length > 0) showBarcode();
 });
 
 barcodeForm.addEventListener("click", (event) => {

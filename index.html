@@ -80,12 +80,54 @@
 
       <form id="barcode-form" class="panel no-print" hidden>
         <div class="barcode-body">
-          <div class="barcode-main">
+          <fieldset class="barcode-sizes">
+            <legend>生成方式</legend>
+            <label class="export-size"><input type="radio" name="barcode-mode" value="single" checked />单张</label>
+            <label class="export-size"><input type="radio" name="barcode-mode" value="batch" />批量</label>
+          </fieldset>
+          <div id="barcode-single" class="barcode-main">
             <label class="field barcode-field">
               <span class="field-label">条码内容</span>
               <input id="barcode-value" name="barcode" type="text" autocomplete="off" placeholder="例如 ABC-001" />
             </label>
             <button type="submit" class="primary">生成条码</button>
+          </div>
+          <div id="barcode-batch" class="barcode-batch" hidden>
+            <label class="field barcode-field">
+              <span class="field-label">前缀</span>
+              <input name="batch-prefix" type="text" autocomplete="off" placeholder="例如 WH-A-" />
+            </label>
+            <label class="field barcode-field">
+              <span class="field-label">起始值</span>
+              <input name="batch-start" type="number" min="0" step="1" inputmode="numeric" placeholder="1" />
+            </label>
+            <label class="field barcode-field">
+              <span class="field-label">结束值</span>
+              <input name="batch-end" type="number" min="0" step="1" inputmode="numeric" placeholder="20" />
+            </label>
+            <label class="field barcode-field">
+              <span class="field-label">增长方式</span>
+              <select name="batch-mode">
+                <option value="inc" selected>递增</option>
+                <option value="dec">递减</option>
+              </select>
+            </label>
+            <label class="field barcode-field">
+              <span class="field-label">步长</span>
+              <input name="batch-step" type="number" min="1" step="1" inputmode="numeric" placeholder="1" />
+            </label>
+            <label class="field barcode-field">
+              <span class="field-label">位数</span>
+              <input name="batch-digits" type="number" min="0" step="1" inputmode="numeric" placeholder="4" />
+            </label>
+            <label class="field barcode-field">
+              <span class="field-label">后缀</span>
+              <input name="batch-suffix" type="text" autocomplete="off" placeholder="可空" />
+            </label>
+            <div class="barcode-foot">
+              <p id="barcode-count" class="count">填写后生成</p>
+              <button type="submit" class="primary">生成条码</button>
+            </div>
           </div>
           <fieldset class="barcode-sizes">
             <legend>标签尺寸</legend>
