@@ -112,6 +112,56 @@ export function countLabels(segments: SegmentConfig[]): { count: number } | { er
   return { count };
 }
 
+export function countLocationGroups(
+  segments: SegmentConfig[],
+  axis: number,
+): { groups: number; count: number } | { error: string } {
+  if (!Number.isInteger(axis) || axis < 0 || axis >= segments.length) {
+    return invalid("成组段无效");
+  }
+  const counted = countLabels(segments);
+  if ("error" in counted) return counted;
+  const axisCount = segmentLength(segments[axis], axis);
+  if ("error" in axisCount) return axisCount;
+  return { groups: counted.count / axisCount.length, count: counted.count };
+}
+
+function digitsAt(index: number, lengths: number[]): number[] {
+  const digits = new Array<number>(lengths.length);
+  let cursor = index;
+  for (let position = lengths.length - 1; position >= 0; position -= 1) {
+    const length = lengths[position];
+    digits[position] = length === 0 ? 0 : cursor % length;
+    cursor = Math.floor(cursor / length);
+  }
+  return digits;
+}
+
+export function groupLocationCodes(segments: SegmentConfig[], codes: string[], axis: number): string[][] {
+  if (codes.length === 0) return [];
+  if (!Number.isInteger(axis) || axis < 0 || axis >= segments.length) return [codes.slice()];
+
+  const lengths: number[] = [];
+  for (let index = 0; index < segments.length; index += 1) {
+    const counted = segmentLength(segments[index], index);
+    if ("error" in counted) return [codes.slice()];
+    lengths.push(counted.length);
+  }
+  const expected = lengths.reduce((product, length) => product * length, 1);
+  if (expected !== codes.length) return [codes.slice()];
+
+  const groups = new Map<string, string[]>();
+  for (let index = 0; index < codes.length; index += 1) {
+    const digits = digitsAt(index, lengths);
+    digits[axis] = 0;
+    const key = digits.join(".");
+    const group = groups.get(key);
+    if (group) group.push(codes[index]);
+    else groups.set(key, [codes[index]]);
+  }
+  return [...groups.values()];
+}
+
 export function generateCodes(segments: SegmentConfig[]): GenerateResult {
   const lists: string[][] = [];
   for (let index = 0; index < segments.length; index += 1) {

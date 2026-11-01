@@ -1,7 +1,9 @@
 import "./style.css";
 import {
   countLabels,
+  countLocationGroups,
   generateCodes,
+  groupLocationCodes,
   type GrowthMode,
   type SegmentConfig,
 } from "./generate";
@@ -9,10 +11,16 @@ import { barcodeBatch, barcodeCode, type BarcodeBatchConfig } from "./barcode";
 import {
   applyLabelSize,
   fitLabels,
+  groupPageHeightCm,
+  GROUP_STRIP,
+  isArrowDirection,
   isPrintSize,
   labelSizeClass,
   renderLabels,
+  renderLocationGroups,
+  setGroupArrows,
   setLabelCopy,
+  type ArrowDirection,
   type LabelExtras,
   type PrintSize,
 } from "./labels";
@@ -71,12 +79,18 @@ const printLabelButtons = [...document.querySelectorAll<HTMLButtonElement>(".pri
 const printA4Buttons = [...document.querySelectorAll<HTMLButtonElement>(".print-a4")];
 const pageSize = document.querySelector<HTMLStyleElement>("#page-size")!;
 const exportDialog = document.querySelector<HTMLDialogElement>("#export-dialog")!;
+const exportSizes = exportDialog.querySelector<HTMLElement>(".export-sizes")!;
 const pickMask = document.querySelector<HTMLButtonElement>("#pick-mask")!;
 const exportMode = document.querySelector<HTMLElement>("#export-mode")!;
+const locationGroupOptions = document.querySelector<HTMLElement>("#location-group-options")!;
 
 let currentRoute: AppRoute = "home";
 let currentCodes: string[] = [];
 let locationCodes: string[] = [];
+let locationSegments: SegmentConfig[] = [];
+let locationLayout: "single" | "group" = "single";
+let locationAxis = 2;
+let arrowDirection: ArrowDirection = "left";
 let pickCodes: string[] = [];
 let barcodeCodes: string[] = [];
 let barcodeSize: PrintSize = "15x10";
@@ -197,7 +211,7 @@ function setBarcodeError(message: string): void {
   barcodeErrorEl.hidden = message.length === 0;
 }
 
-function renderCount(count: number | null, tick: boolean): void {
+function renderCount(count: number | null, tick: boolean, groups?: number): void {
   countEl.replaceChildren();
   if (count === null) {
     countEl.textContent = "无法计算张数";
@@ -206,8 +220,13 @@ function renderCount(count: number | null, tick: boolean): void {
   countEl.append("将生成 ");
   const number = document.createElement("strong");
   number.className = tick ? "count-num tick" : "count-num";
-  number.textContent = String(count);
-  countEl.append(number, " 张");
+  if (groups === undefined) {
+    number.textContent = String(count);
+    countEl.append(number, " 张");
+    return;
+  }
+  number.textContent = String(groups);
+  countEl.append(number, ` 组，共 ${count} 个条码`);
 }
 
 function setBarcodeFit(mode: "meet" | "slice"): void {
@@ -333,7 +352,19 @@ function refreshCount(): void {
     countEl.textContent = "填写后生成";
     return;
   }
-  const counted = countLabels(readSegments());
+  const segments = readSegments();
+  if (locationLayout === "group") {
+    const counted = countLocationGroups(segments, locationAxis);
+    if ("error" in counted) {
+      renderCount(null, false);
+      setError(counted.error);
+      return;
+    }
+    setError("");
+    renderCount(counted.count, false, counted.groups);
+    return;
+  }
+  const counted = countLabels(segments);
   if ("error" in counted) {
     renderCount(null, false);
     setError(counted.error);
@@ -345,23 +376,35 @@ function refreshCount(): void {
 
 function showExample(): void {
   currentCodes = [];
+  document.body.dataset.layout = "single";
   document.body.dataset.size = "fluid";
   preview.classList.add("is-example");
-  preview.classList.remove("preview-pick", "preview-barcode");
+  preview.classList.remove("preview-pick", "preview-barcode", "preview-group");
   renderLabels(preview, [EXAMPLE_CODE], "fluid");
   setPrintEnabled(false);
 }
 
 function showPickEmpty(): void {
   currentCodes = [];
-  preview.classList.remove("is-example", "preview-pick", "preview-barcode");
+  document.body.dataset.layout = "single";
+  preview.classList.remove("is-example", "preview-pick", "preview-barcode", "preview-group");
+  preview.replaceChildren();
+  setPrintEnabled(false);
+}
+
+function showGroupEmpty(): void {
+  currentCodes = [];
+  document.body.dataset.layout = "group";
+  document.body.dataset.size = "fluid";
+  preview.classList.remove("is-example", "preview-pick", "preview-barcode", "preview-group");
   preview.replaceChildren();
   setPrintEnabled(false);
 }
 
 function showBarcodeEmpty(): void {
   currentCodes = [];
-  preview.classList.remove("is-example", "preview-pick", "preview-barcode", "is-batch");
+  document.body.dataset.layout = "single";
+  preview.classList.remove("is-example", "preview-pick", "preview-barcode", "preview-group", "is-batch");
   preview.replaceChildren();
   setPrintEnabled(false);
 }
@@ -378,8 +421,9 @@ function showBarcode(): void {
     existing.classList.contains(sizeClass);
 
   currentCodes = barcodeCodes.slice();
+  document.body.dataset.layout = "single";
   document.body.dataset.size = barcodeSize;
-  preview.classList.remove("is-example", "preview-pick");
+  preview.classList.remove("is-example", "preview-pick", "preview-group");
   preview.classList.add("preview-barcode");
   preview.classList.toggle("is-batch", barcodeCodes.length > 1);
   if (reuse) {
@@ -398,15 +442,45 @@ function showLabels(codes: string[]): void {
     sameCodes(codes) &&
     preview.childElementCount === codes.length &&
     preview.classList.contains("preview-pick") === pickLayout &&
-    !preview.classList.contains("preview-barcode");
+    !preview.classList.contains("preview-barcode") &&
+    !preview.classList.contains("preview-group");
   currentCodes = codes;
+  document.body.dataset.layout = "single";
   document.body.dataset.size = "fluid";
-  preview.classList.remove("is-example", "preview-barcode");
+  preview.classList.remove("is-example", "preview-barcode", "preview-group");
   preview.classList.toggle("preview-pick", pickLayout);
   if (reuse) setLabelSizeClass("fluid");
   else renderLabels(preview, codes, "fluid");
   setBarcodeFit(pickLayout ? "slice" : "meet");
   setPrintEnabled(codes.length > 0);
+}
+
+function showLocationGroups(groups: string[][]): void {
+  currentCodes = locationCodes.slice();
+  document.body.dataset.layout = "group";
+  document.body.dataset.size = "fluid";
+  preview.classList.remove("is-example", "preview-pick", "preview-barcode");
+  preview.classList.add("preview-group");
+  renderLocationGroups(preview, groups, arrowDirection);
+  setPrintEnabled(groups.length > 0);
+}
+
+function showLocation(): void {
+  if (locationCodes.length === 0) {
+    if (locationLayout === "group") showGroupEmpty();
+    else showExample();
+    return;
+  }
+  if (locationLayout === "group") {
+    const segments = locationSegments.length === 4 ? locationSegments : readSegments();
+    showLocationGroups(groupLocationCodes(segments, locationCodes, locationAxis));
+    return;
+  }
+  showLabels(locationCodes);
+}
+
+function syncLocationOptions(): void {
+  locationGroupOptions.hidden = locationLayout !== "group";
 }
 
 function syncPreview(): void {
@@ -420,18 +494,18 @@ function syncPreview(): void {
     else showBarcodeEmpty();
     return;
   }
-  if (currentRoute === "location") {
-    if (locationCodes.length > 0) showLabels(locationCodes);
-    else showExample();
-  }
+  if (currentRoute === "location") showLocation();
 }
 
 function generate(): void {
-  const result = generateCodes(readSegments());
+  const segments = readSegments();
+  const result = generateCodes(segments);
   if (!result.ok) {
     locationCodes = [];
+    locationSegments = [];
     currentCodes = [];
-    preview.classList.remove("is-example", "preview-pick", "preview-barcode");
+    document.body.dataset.layout = locationLayout;
+    preview.classList.remove("is-example", "preview-pick", "preview-barcode", "preview-group");
     preview.replaceChildren();
     renderCount(null, false);
     setError(result.error);
@@ -439,10 +513,14 @@ function generate(): void {
     return;
   }
   setError("");
-  renderCount(result.count, opened);
-  opened = true;
+  locationSegments = segments;
   locationCodes = result.codes;
-  showLabels(result.codes);
+  if (locationLayout === "group") {
+    const grouped = countLocationGroups(segments, locationAxis);
+    renderCount(result.count, opened, "groups" in grouped ? grouped.groups : undefined);
+  } else renderCount(result.count, opened);
+  opened = true;
+  showLocation();
 }
 
 function selectContainerText(): void {
@@ -481,7 +559,7 @@ function generatePick(): void {
   if (!result.ok) {
     pickCodes = [];
     currentCodes = [];
-    preview.classList.remove("is-example", "preview-pick", "preview-barcode");
+    preview.classList.remove("is-example", "preview-pick", "preview-barcode", "preview-group");
     preview.replaceChildren();
     setPickError(result.error);
     setPrintEnabled(false);
@@ -496,7 +574,7 @@ function generatePick(): void {
 function clearBarcodePreview(message: string): void {
   barcodeCodes = [];
   currentCodes = [];
-  preview.classList.remove("is-example", "preview-pick", "preview-barcode", "is-batch");
+  preview.classList.remove("is-example", "preview-pick", "preview-barcode", "preview-group", "is-batch");
   preview.replaceChildren();
   setBarcodeError(message);
   setPrintEnabled(false);
@@ -527,8 +605,21 @@ function generateBarcode(): void {
 }
 
 function applyPage(mode: "label" | "a4"): void {
+  const groupPrint = currentRoute === "location" && locationLayout === "group" && locationCodes.length > 0;
+  if (groupPrint) {
+    document.body.dataset.print = mode;
+    document.body.dataset.layout = "group";
+    document.body.dataset.size = "group";
+    if (mode === "a4") pageSize.textContent = "@page { size: A4; margin: 8mm; }";
+    else {
+      const perGroup = groupLocationCodes(locationSegments, locationCodes, locationAxis)[0]?.length ?? 1;
+      pageSize.textContent = `@page { size: ${GROUP_STRIP.widthCm}cm ${groupPageHeightCm(perGroup)}cm; margin: 0; }`;
+    }
+    return;
+  }
   const size = exportSize();
   document.body.dataset.print = mode;
+  document.body.dataset.layout = "single";
   document.body.dataset.size = size;
   setLabelSizeClass(size);
   setBarcodeFit("meet");
@@ -555,7 +646,11 @@ function restoreScreen(): void {
 
 function openExport(mode: "label" | "a4"): void {
   pendingPrint = mode;
-  exportMode.textContent = mode === "a4" ? "A4 拼版打印" : "打印 / 导出 PDF";
+  const groupPrint = currentRoute === "location" && locationLayout === "group";
+  exportSizes.hidden = groupPrint;
+  if (groupPrint) {
+    exportMode.textContent = mode === "a4" ? "A4 拼版打印，每组一条" : "每组单独一页，高度随条码数量变化";
+  } else exportMode.textContent = mode === "a4" ? "A4 拼版打印" : "打印 / 导出 PDF";
   if (currentRoute === "barcode") {
     const radio = exportDialog.querySelector<HTMLInputElement>(`input[name="export-size"][value="${barcodeSize}"]`);
     if (radio) radio.checked = true;
@@ -612,6 +707,7 @@ function navigate(pathname: string): void {
 }
 
 buildSegments();
+syncLocationOptions();
 refreshCount();
 syncBarcodeMode();
 renderRoute();
@@ -632,6 +728,30 @@ document.addEventListener("click", (event) => {
 
 form.addEventListener("input", () => {
   refreshCount();
+});
+
+form.addEventListener("change", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement || target instanceof HTMLSelectElement)) return;
+  if (target.name === "location-layout") {
+    locationLayout = target.value === "group" ? "group" : "single";
+    syncLocationOptions();
+    refreshCount();
+    if (currentRoute === "location") showLocation();
+    return;
+  }
+  if (target.name === "location-axis") {
+    const axis = Number(target.value);
+    if (!Number.isInteger(axis)) return;
+    locationAxis = axis;
+    refreshCount();
+    if (currentRoute === "location" && locationLayout === "group" && locationCodes.length > 0) showLocation();
+    return;
+  }
+  if (target.name === "arrow-dir" && isArrowDirection(target.value)) {
+    arrowDirection = target.value;
+    if (preview.querySelector(".location-group")) setGroupArrows(preview, arrowDirection);
+  }
 });
 
 form.addEventListener("submit", (event) => {

@@ -30,7 +30,7 @@
         </a>
         <a class="entry" href="/location">
           <h2>库位条码</h2>
-          <p>按四段编号批量生成库位标签</p>
+          <p>按四段编号批量生成库位标签，也可排成带箭头的一组</p>
         </a>
         <a class="entry" href="/pick">
           <h2>拣选框</h2>
@@ -48,6 +48,33 @@
           <span>位数</span>
         </div>
         <div id="segments"></div>
+
+        <div class="location-options">
+          <fieldset class="barcode-sizes">
+            <legend>版式</legend>
+            <label class="export-size"><input type="radio" name="location-layout" value="single" checked />单张</label>
+            <label class="export-size"><input type="radio" name="location-layout" value="group" />一组</label>
+          </fieldset>
+          <div id="location-group-options" hidden>
+            <label class="field location-axis">
+              <span class="field-label">按段排列</span>
+              <select name="location-axis">
+                <option value="0">第 1 段</option>
+                <option value="1">第 2 段</option>
+                <option value="2" selected>第 3 段</option>
+                <option value="3">第 4 段</option>
+              </select>
+            </label>
+            <fieldset class="barcode-sizes">
+              <legend>箭头方向</legend>
+              <label class="export-size"><input type="radio" name="arrow-dir" value="left" checked />← 向左</label>
+              <label class="export-size"><input type="radio" name="arrow-dir" value="right" />→ 向右</label>
+              <label class="export-size"><input type="radio" name="arrow-dir" value="up" />↑ 向上</label>
+              <label class="export-size"><input type="radio" name="arrow-dir" value="down" />↓ 向下</label>
+            </fieldset>
+            <p class="hint">按该段的顺序从上到下排列，其余段各自成组。箭头在每组上下两端。</p>
+          </div>
+        </div>
 
         <p id="error" class="alert" role="alert" hidden>
           <svg viewBox="0 0 16 16" aria-hidden="true">

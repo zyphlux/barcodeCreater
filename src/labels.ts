@@ -208,3 +208,129 @@ export function applyLabelSize(label: HTMLElement, size: LabelSize): void {
   label.classList.remove(...SIZE_CLASSES);
   label.classList.add(SIZE_CLASS[size]);
 }
+
+export type ArrowDirection = "left" | "right" | "up" | "down";
+
+export function isArrowDirection(value: string | undefined): value is ArrowDirection {
+  return value === "left" || value === "right" || value === "up" || value === "down";
+}
+
+export const GROUP_STRIP = {
+  widthCm: 10,
+  padCm: 0.4,
+  arrowCm: 1.45,
+  itemCm: 2.9,
+} as const;
+
+export function groupPageHeightCm(itemCount: number): string {
+  const count = Math.max(1, itemCount);
+  const height =
+    GROUP_STRIP.padCm * 2 + GROUP_STRIP.arrowCm * 2 + GROUP_STRIP.itemCm * count + 0.2;
+  return height.toFixed(2);
+}
+
+const ARROW_SHAPES: Record<ArrowDirection, { viewBox: string; d: string }> = {
+  left: {
+    viewBox: "0 0 180 100",
+    d: "M78 4 L6 50 L78 96 L78 68 L174 68 L174 32 L78 32 Z",
+  },
+  right: {
+    viewBox: "0 0 180 100",
+    d: "M102 4 L174 50 L102 96 L102 68 L6 68 L6 32 L102 32 Z",
+  },
+  up: {
+    viewBox: "0 0 100 180",
+    d: "M96 78 L50 6 L4 78 L32 78 L32 174 L68 174 L68 78 Z",
+  },
+  down: {
+    viewBox: "0 0 100 180",
+    d: "M4 102 L50 174 L96 102 L68 102 L68 6 L32 6 L32 102 Z",
+  },
+};
+
+function createArrowSvg(direction: ArrowDirection): SVGSVGElement {
+  const shape = ARROW_SHAPES[direction];
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", shape.viewBox);
+  svg.setAttribute("aria-hidden", "true");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("fill", "#000000");
+  path.setAttribute("d", shape.d);
+  svg.append(path);
+  return svg;
+}
+
+function drawCode(svg: SVGSVGElement, code: string, height: number): void {
+  const moduleWidth = 2;
+  const quiet = moduleWidth * 10;
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `Code 39 ${code}`);
+  JsBarcode(svg, code, {
+    format: "CODE39",
+    displayValue: false,
+    background: "#ffffff",
+    lineColor: "#000000",
+    width: moduleWidth,
+    height,
+    marginTop: moduleWidth,
+    marginBottom: 0,
+    marginLeft: quiet,
+    marginRight: quiet,
+  });
+  const drawnWidth = Number(svg.getAttribute("width"));
+  const drawnHeight = Number(svg.getAttribute("height"));
+  if (drawnWidth > 0 && drawnHeight > 0) {
+    svg.setAttribute("viewBox", `0 0 ${drawnWidth} ${drawnHeight}`);
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  }
+}
+
+function appendArrow(parent: HTMLElement, direction: ArrowDirection): void {
+  const arrow = document.createElement("div");
+  arrow.className = "group-arrow";
+  arrow.dataset.dir = direction;
+  arrow.append(createArrowSvg(direction));
+  parent.append(arrow);
+}
+
+export function setGroupArrows(root: ParentNode, direction: ArrowDirection): void {
+  root.querySelectorAll<HTMLElement>(".location-group").forEach((group) => {
+    group.dataset.arrow = direction;
+    group.querySelectorAll<HTMLElement>(".group-arrow").forEach((host) => {
+      host.dataset.dir = direction;
+      host.replaceChildren(createArrowSvg(direction));
+    });
+  });
+}
+
+export function renderLocationGroups(
+  container: HTMLElement,
+  groups: string[][],
+  direction: ArrowDirection,
+): void {
+  container.replaceChildren();
+  for (const codes of groups) {
+    const group = document.createElement("article");
+    group.className = "location-group";
+    group.dataset.arrow = direction;
+    const last = codes[codes.length - 1] ?? "";
+    group.setAttribute("aria-label", codes.length > 1 ? `库位组 ${codes[0]} 到 ${last}` : `库位 ${codes[0] ?? ""}`);
+    appendArrow(group, direction);
+    for (const code of codes) {
+      const item = document.createElement("div");
+      item.className = "group-item";
+      const barcodeWrap = document.createElement("div");
+      barcodeWrap.className = "barcode-wrap";
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const caption = document.createElement("p");
+      caption.className = "label-code";
+      caption.textContent = code;
+      barcodeWrap.append(svg);
+      item.append(barcodeWrap, caption);
+      group.append(item);
+      drawCode(svg, code, 72);
+    }
+    appendArrow(group, direction);
+    container.append(group);
+  }
+}

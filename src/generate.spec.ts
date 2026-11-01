@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
-import { DEFAULT_SEGMENTS, generateCodes, type SegmentConfig } from "./generate.ts";
+import {
+  countLocationGroups,
+  DEFAULT_SEGMENTS,
+  generateCodes,
+  groupLocationCodes,
+  type SegmentConfig,
+} from "./generate.ts";
 
 const defaults = generateCodes(DEFAULT_SEGMENTS);
 assert.equal(defaults.ok, true);
@@ -54,5 +60,39 @@ const tooMany = generateCodes([
 assert.equal(tooMany.ok, false);
 if (tooMany.ok) throw new Error("expected limit");
 assert.match(tooMany.error, /1000/);
+
+const rack: SegmentConfig[] = [
+  { start: 204, end: 204, mode: "fixed", step: 1, digits: 0 },
+  { start: 2, end: 3, mode: "inc", step: 1, digits: 2 },
+  { start: 5, end: 1, mode: "dec", step: 1, digits: 0 },
+  { start: 2, end: 2, mode: "fixed", step: 1, digits: 0 },
+];
+const rackCodes = generateCodes(rack);
+assert.equal(rackCodes.ok, true);
+if (!rackCodes.ok) throw new Error(rackCodes.error);
+const rackGroups = groupLocationCodes(rack, rackCodes.codes, 2);
+assert.equal(rackGroups.length, 2);
+assert.deepEqual(rackGroups[0], ["204.02.5.2", "204.02.4.2", "204.02.3.2", "204.02.2.2", "204.02.1.2"]);
+assert.deepEqual(rackGroups[1], ["204.03.5.2", "204.03.4.2", "204.03.3.2", "204.03.2.2", "204.03.1.2"]);
+
+const rackCount = countLocationGroups(rack, 2);
+assert.deepEqual(rackCount, { groups: 2, count: 10 });
+
+const crossed: SegmentConfig[] = [
+  { start: 1, end: 1, mode: "fixed", step: 1, digits: 0 },
+  { start: 1, end: 2, mode: "inc", step: 1, digits: 0 },
+  { start: 1, end: 1, mode: "fixed", step: 1, digits: 0 },
+  { start: 1, end: 2, mode: "inc", step: 1, digits: 0 },
+];
+const crossedCodes = generateCodes(crossed);
+assert.equal(crossedCodes.ok, true);
+if (!crossedCodes.ok) throw new Error(crossedCodes.error);
+assert.deepEqual(groupLocationCodes(crossed, crossedCodes.codes, 1), [
+  ["1.1.1.1", "1.2.1.1"],
+  ["1.1.1.2", "1.2.1.2"],
+]);
+
+const badAxis = countLocationGroups(rack, 4);
+assert.ok("error" in badAxis);
 
 console.log("generate checks passed");
