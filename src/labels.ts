@@ -209,10 +209,10 @@ export function applyLabelSize(label: HTMLElement, size: LabelSize): void {
   label.classList.add(SIZE_CLASS[size]);
 }
 
-export type ArrowDirection = "left" | "right" | "up" | "down";
+export type ArrowDirection = "left" | "right";
 
 export function isArrowDirection(value: string | undefined): value is ArrowDirection {
-  return value === "left" || value === "right" || value === "up" || value === "down";
+  return value === "left" || value === "right";
 }
 
 export const GROUP_STRIP = {
@@ -231,20 +231,12 @@ export function groupPageHeightCm(itemCount: number): string {
 
 const ARROW_SHAPES: Record<ArrowDirection, { viewBox: string; d: string }> = {
   left: {
-    viewBox: "0 0 180 100",
-    d: "M78 4 L6 50 L78 96 L78 68 L174 68 L174 32 L78 32 Z",
+    viewBox: "0 0 300 84",
+    d: "M78 4 L10 42 L78 80 L78 56 L290 56 L290 28 L78 28 Z",
   },
   right: {
-    viewBox: "0 0 180 100",
-    d: "M102 4 L174 50 L102 96 L102 68 L6 68 L6 32 L102 32 Z",
-  },
-  up: {
-    viewBox: "0 0 100 180",
-    d: "M96 78 L50 6 L4 78 L32 78 L32 174 L68 174 L68 78 Z",
-  },
-  down: {
-    viewBox: "0 0 100 180",
-    d: "M4 102 L50 174 L96 102 L68 102 L68 6 L32 6 L32 102 Z",
+    viewBox: "0 0 300 84",
+    d: "M222 4 L290 42 L222 80 L222 56 L10 56 L10 28 L222 28 Z",
   },
 };
 
@@ -252,6 +244,7 @@ function createArrowSvg(direction: ArrowDirection): SVGSVGElement {
   const shape = ARROW_SHAPES[direction];
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", shape.viewBox);
+  svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
   svg.setAttribute("aria-hidden", "true");
   const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
   path.setAttribute("fill", "#000000");
